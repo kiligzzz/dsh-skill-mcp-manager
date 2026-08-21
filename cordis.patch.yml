@@ -1,0 +1,14 @@
+# @kiligzzz/dsh-capability-manager bundle patch: mounts the dual-face plugin
+# row into the profile roster. Applied as a profile bundle layer (the
+# dsh.bundle.patch manifest field) over dsh-base.
+#
+# The row is a bare plugin by package name: the node half (exports ".") runs
+# in the host process — it owns ALL business logic (MCP mount/unmount,
+# mcp.json map-format management, skill management over ~/.dsh/skills, the
+# capability-directory prompt section, and the /capabilities-api REST surface).
+# The dsh.client declaration in package.json makes the browser half
+# (exports "./client") load in the web GUI and register the Settings-page
+# Skill / MCP sections, which talk to the host over same-origin fetch.
+- insert:
+    - id: dsh-capability-manager
+      name: '@kiligzzz/dsh-capability-manager'
