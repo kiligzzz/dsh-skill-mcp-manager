@@ -89,7 +89,10 @@ dsh-capability-manager/
   `git push --force-with-lease`），重写前 `cp -r` 备份含 `.git` 到 /tmp；
 - 投稿 PR 门禁：CI check + Submission gate 全绿等维护者 review。
 
-## 5. 发布 npm
+## 5. 发布 npm（可选，默认不做）
+
+> 用户约定（2026-08-21）：**自用插件默认不发布 npm**——本地一律 `link:` 安装，
+> GitHub 仓库保留即可。仅当要给别人/别的机器 `npm install` 时才走本节。
 
 ```bash
 cd ~/dsh/plugins/dsh-xxx
