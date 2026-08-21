@@ -1,6 +1,6 @@
 {
   "name": "@kiligzzz/dsh-capability-manager",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Capability Manager for DeepSeek Harness Desktop: manage MCP servers (~/.dsh/mcp.json, live mount/unmount) and Skills (~/.dsh/skills, toggle/delete/import/folder-sync) from a Settings-page UI, plus a per-session capability-directory prompt section. Dual-face dsh plugin (host + browser half), no DSH source changes.",
   "keywords": [
     "dsh",

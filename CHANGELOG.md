@@ -2,6 +2,20 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.1.1] - 2026-08-21
+
+Dark-theme UI polish (vision-verified on both themes).
+
+- **Switch**: both on/off states now share the identical neutral gray track
+  (`--dsw-alias-border-l4`) with a white thumb (`--dsw-static-neutral-bluish-00`);
+  state is indicated only by thumb position (left = off, right = on) — no color
+  change, no inverted thumb. Consistent with the system-default switch look.
+- **Status dot (disabled)**: `--dsw-alias-label-tertiary` neutral gray, no
+  opacity hack.
+- **Buttons**: border back to `--dsw-alias-border-l2`; primary uses
+  `--dsw-alias-state-business-primary` (brand blue) so it stays chromatic in
+  both light and dark themes.
+
 ## [0.1.0] - 2026-08-21
 
 Initial release.
