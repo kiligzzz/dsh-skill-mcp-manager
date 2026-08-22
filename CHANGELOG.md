@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.1.2] - 2026-08-22
+
+### Changed
+
+- README: 默认简体中文（`README.md`），英文切换至 `README.en.md`。
+- 新增 peerDependencies（`@deepseek-ai/dsh-mcp-client` / `dsh-client-runtime` / `dsh-client-ui-slots` 覆盖 0.1.1-rc.2 宿主）。
+- 提交 1024Store 商店收录（PR imsai-sh/awesome-deepseek-harness-plugins#163）。
+
 ## [0.1.1] - 2026-08-21
 
 Dark-theme UI polish (vision-verified on both themes).
