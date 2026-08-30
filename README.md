@@ -1,8 +1,8 @@
-# dsh-capability-manager
+# dsh-skill-mcp-manager
 
 [English](./README.en.md) | 简体中文
 
-**Capability Manager**（能力管理器）——为 [DeepSeek Harness](https://github.com/deepseek-ai/dsh) Desktop
+**DSH Skill MCP Manager**（能力管理器）——为 [DeepSeek Harness](https://github.com/deepseek-ai/dsh) Desktop
 提供设置页内的 **MCP server** 与 **Skill** 统一管理界面，无需手改配置文件、无需改动 DSH 源码。
 
 | Skill 管理页 | MCP 管理页 |
@@ -43,11 +43,11 @@
 ```json
 {
   "dependencies": {
-    "@kiligzzz/dsh-capability-manager": "^0.1.0"
+    "@kiligzzz/dsh-skill-mcp-manager": "^0.1.0"
   },
   "dsh": {
     "profile": {
-      "bundles": ["@kiligzzz/dsh-capability-manager"]
+      "bundles": ["@kiligzzz/dsh-skill-mcp-manager"]
     }
   }
 }

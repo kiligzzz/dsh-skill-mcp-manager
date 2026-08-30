@@ -1,4 +1,4 @@
-# @kiligzzz/dsh-capability-manager bundle patch: mounts the dual-face plugin
+# @kiligzzz/dsh-skill-mcp-manager bundle patch: mounts the dual-face plugin
 # row into the profile roster. Applied as a profile bundle layer (the
 # dsh.bundle.patch manifest field) over dsh-base.
 #
@@ -10,5 +10,5 @@
 # (exports "./client") load in the web GUI and register the Settings-page
 # Skill / MCP sections, which talk to the host over same-origin fetch.
 - insert:
-    - id: dsh-capability-manager
-      name: '@kiligzzz/dsh-capability-manager'
+    - id: dsh-skill-mcp-manager
+      name: '@kiligzzz/dsh-skill-mcp-manager'

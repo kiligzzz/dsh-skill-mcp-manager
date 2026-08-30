@@ -1,4 +1,4 @@
-// @kiligzzz/dsh-capability-manager — host half.
+// @kiligzzz/dsh-skill-mcp-manager — host half.
 //
 // Host-plane half of the Capability Manager: owns ALL business logic — MCP
 // server mounting (dynamic plugin sandbox has no `ctx.plugin`), `mcp.json`
@@ -15,7 +15,7 @@ import os from 'node:os'
 import fs from 'node:fs'
 import { spawn } from 'node:child_process'
 
-export const name = '@kiligzzz/dsh-capability-manager'
+export const name = '@kiligzzz/dsh-skill-mcp-manager'
 
 export const inject = ['tools']
 
@@ -478,7 +478,7 @@ export function apply(ctx) {
   // 启动时同步一次
   syncAll()
     .then(() => refreshSection())
-    .catch((e) => console.error('@kiligzzz/dsh-capability-manager sync:', e))
+    .catch((e) => console.error('@kiligzzz/dsh-skill-mcp-manager sync:', e))
 
   // 卸载清理
   ctx.effect(() => () => {

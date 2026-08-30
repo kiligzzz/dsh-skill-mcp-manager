@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.2.0] - 2026-09-02
+
+### Changed
+
+- **改名**：`dsh-capability-manager` → **DSH Skill MCP Manager**（仓库 `kiligzzz/dsh-skill-mcp-manager`，包名 `@kiligzzz/dsh-skill-mcp-manager`）。全链路六处包名同步（package.json / cordis.patch.yml / client bundle id + exports + 样式 tag / host export name / verify.mjs），设置页标题与 README 显示名更新；REST 路由 `/capabilities-api/*` 与功能名 `capabilityManager` / `capability:mcp` 保持不变（内部契约，对外兼容）。
+
 ## [0.1.4] - 2026-09-02
 
 ### Fixed

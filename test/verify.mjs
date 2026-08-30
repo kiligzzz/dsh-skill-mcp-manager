@@ -1,4 +1,4 @@
-// Migration / consistency verification for @kiligzzz/dsh-capability-manager.
+// Migration / consistency verification for @kiligzzz/dsh-skill-mcp-manager.
 //
 // Checks that survive future edits:
 //  1. package name appears in every place the DSH loader chain needs it
@@ -39,7 +39,7 @@ expect('client stylesheet tag id', client.includes('"@' + name.slice(1) + '/styl
 expect('client stylesheet data-plugin', client.includes('tag.dataset.plugin = "' + name + '"'))
 
 // 2. host shape
-check('host exports name', /export const name = '@kiligzzz\/dsh-capability-manager'/.test(host))
+check('host exports name', /export const name = '@kiligzzz\/dsh-skill-mcp-manager'/.test(host))
 check('host exports inject', /export const inject = \['tools'\]/.test(host))
 check('host exports apply', /export function apply\(ctx\)/.test(host))
 

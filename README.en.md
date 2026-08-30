@@ -1,8 +1,8 @@
-# dsh-capability-manager
+# dsh-skill-mcp-manager
 
 [简体中文](./README.md) | English
 
-**Capability Manager** for [DeepSeek Harness](https://github.com/deepseek-ai/dsh) Desktop —
+**DSH Skill MCP Manager** for [DeepSeek Harness](https://github.com/deepseek-ai/dsh) Desktop —
 manage your MCP servers and Skills from a Settings-page UI, no config-file editing or
 DSH source changes required.
 
@@ -47,11 +47,11 @@ Requires a DSH profile that loads profile bundle patches. In your profile's
 ```json
 {
   "dependencies": {
-    "@kiligzzz/dsh-capability-manager": "^0.1.0"
+    "@kiligzzz/dsh-skill-mcp-manager": "^0.1.0"
   },
   "dsh": {
     "profile": {
-      "bundles": ["@kiligzzz/dsh-capability-manager"]
+      "bundles": ["@kiligzzz/dsh-skill-mcp-manager"]
     }
   }
 }

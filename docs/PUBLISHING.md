@@ -2,7 +2,7 @@
 
 > 本文档沉淀 DSH 自研插件的完整发布 SOP，含踩过的坑。适用对象：
 > `~/dsh/plugins/*` 下的双面插件（host + browser half）。参照实现：
-> `@kiligzzz/dsh-session-nav`、`@kiligzzz/dsh-session-archive`、`@kiligzzz/dsh-capability-manager`。
+> `@kiligzzz/dsh-session-nav`、`@kiligzzz/dsh-session-archive`、`@kiligzzz/dsh-skill-mcp-manager`。
 
 ---
 
@@ -17,8 +17,8 @@
 ## 1. 建仓与目录结构（标准模板）
 
 ```
-dsh-capability-manager/
-├── package.json        # name: @kiligzzz/dsh-capability-manager, type: module
+dsh-skill-mcp-manager/
+├── package.json        # name: @kiligzzz/dsh-skill-mcp-manager, type: module
 ├── cordis.patch.yml    # bundle insert 行（dsh.bundle.patch 自动发现，无需手动加 insert）
 ├── index.js            # host half（ESM：export const name / inject / apply）
 ├── lib/client.js       # browser half（window.__ModuleLoader__.load，id 必须=包名）
@@ -31,7 +31,7 @@ dsh-capability-manager/
 
 ```jsonc
 {
-  "name": "@kiligzzz/dsh-capability-manager",
+  "name": "@kiligzzz/dsh-skill-mcp-manager",
   "type": "module",
   "main": "index.js",
   "exports": {
