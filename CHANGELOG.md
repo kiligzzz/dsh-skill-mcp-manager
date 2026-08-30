@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.1.4] - 2026-09-02
+
+### Fixed
+
+- **DSH 0.1.2 破坏性变更兼容修复**（client 半此前静默失效，Settings 页 Skill/MCP 两个 section 不显示）：
+  - `package.json` `dsh.client.inject`：`@deepseek-ai/dsh-client-runtime` → `@deepseek-ai/dsh-client-store`（0.1.2 起模块改名，旧名不存在导致 client 注入失败）。
+  - `lib/client.js`：`module.exports` 增加 `inject: ["slots"]`（slots 为 hardDependency，缺失时 loader 抛 `cannot get property 'slots' without inject`）；`apply` 内 `ctx.get("slots")` → `ctx.slots`（旧式 get 在 0.1.2 fiber 时序下返回 undefined，client 半静默退出）。
+  - `peerDependencies` 同步 `dsh-client-runtime` → `dsh-client-store`。
+- `test/verify.mjs` 增加 0.1.2 兼容断言（exports.inject / ctx.slots / 无旧模块引用）。
+
 ## [0.1.3] - 2026-08-22
 
 ### Fixed

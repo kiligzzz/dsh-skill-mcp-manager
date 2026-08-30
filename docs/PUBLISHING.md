@@ -43,7 +43,7 @@ dsh-capability-manager/
   "files": ["index.js", "lib", "cordis.patch.yml", "README.md", "README.zh-CN.md", "LICENSE"],
   "dsh": {
     "bundle": { "patch": "./cordis.patch.yml" },
-    "client": { "inject": ["@deepseek-ai/dsh-client-runtime", "@deepseek-ai/dsh-client-ui-slots"], "platform": "web" }
+    "client": { "inject": ["@deepseek-ai/dsh-client-store", "@deepseek-ai/dsh-client-ui-slots"], "platform": "web" }
   }
 }
 ```
