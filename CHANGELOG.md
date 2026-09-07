@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.3.2] - 2026-09-07
+
+- 修复目录采集器启动顺序，等待隔离注册器激活后再启动 MCP client，避免误缓存空工具清单。
+- 设置页新增刷新全部工具按钮，逐个刷新所有配置并显示进度。
+
 ## [0.3.1] - 2026-09-07
 
 - 设置页恢复工具数量、名称和描述，使用独立缓存 `~/.dsh/mcp-tools-cache.json`。

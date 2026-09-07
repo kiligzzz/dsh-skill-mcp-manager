@@ -1,6 +1,6 @@
 {
   "name": "@kiligzzz/dsh-skill-mcp-manager",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "DSH Skill MCP Manager for DeepSeek Harness Desktop: manage MCP servers and Skills from Settings, publish compact capability descriptions, and progressively load each MCP server's tools only into the requesting session. Dual-face dsh plugin, no DSH source changes.",
   "keywords": [
     "dsh",

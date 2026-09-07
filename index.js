@@ -244,7 +244,7 @@ export function apply(ctx) {
     try {
       probe = ctx.isolate('tools').plugin({
         name: 'mcp-catalog-probe',
-        async apply(probeCtx) {
+        apply(probeCtx) {
           // Capture metadata without publishing callable tools to any Agent.
           probeCtx.provide('tools', {
             register(definition) {
@@ -256,12 +256,14 @@ export function apply(ctx) {
               return () => tools.delete(definition.name)
             },
           })
-          await probeCtx.plugin(plugin, {
-            ...clientConfig(server), reconnect: { enabled: false },
-          })
         },
       })
       await probe
+      const client = probe.ctx.plugin(plugin, {
+        ...clientConfig(server), reconnect: { enabled: false },
+      })
+      await client
+      if (client.state !== 2) throw new Error('MCP catalog client did not activate')
       catalog[server.name] = {
         updatedAt: new Date().toISOString(),
         tools: [...tools.values()].sort((a, b) => a.name.localeCompare(b.name)),
