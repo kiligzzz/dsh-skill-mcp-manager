@@ -7,7 +7,7 @@
 
 | Skill 管理页 | MCP 管理页 |
 | --- | --- |
-| 开关 / 删除 / 导入 / 文件夹同步 skill（`~/.dsh/skills`）。 | 增删改 MCP server（`~/.dsh/mcp.json`），实时挂载状态与每个 server 的工具列表。 |
+| 开关 / 删除 / 导入 / 文件夹同步 skill（`~/.dsh/skills`）。 | 增删改 MCP server（`~/.dsh/mcp.json`），通过名称和描述按会话渐进加载工具。 |
 
 基于官方 DSH 双面插件机制（host + 浏览器端），以 profile bundle 行加载——随 DSH 升级存续，
 无需动态插件激活。
@@ -25,16 +25,15 @@
 **MCP 管理**（`~/.dsh/mcp.json`，map 格式）
 - 新增 / 编辑 / 删除 server，支持两种传输：`stdio`（命令/参数/环境变量/工作目录）与
   `streamable-http`（URL/请求头）。
-- **实时挂载/卸载**：通过 `@deepseek-ai/dsh-mcp-client`（由宿主运行时解析，不打进包），
-  带重连与 60s 工具调用超时。
-- 每个 server 的**实时状态**（mounted / mounting / error / disabled）、**工具列表**
-  （前缀 `mcp__<name>__`）与错误日志一键复制。
-- 直接编辑 `~/.dsh/mcp.json` 保存后自动检测（3 秒轮询）并重挂载。
+- **按会话渐进加载**：启动时不连接 MCP，也不注入原生工具 Schema；模型命中 Server 描述后调用
+  `mcp_session(load)`，再通过 `@deepseek-ai/dsh-mcp-client` 把该 Server 的全部工具加载到当前 Agent。
+- `mcp_session` 支持 `load` / `unload` / `status`，不同会话互不影响；Agent 销毁时自动关闭连接并注销工具。
+- `enabled` 表示 Server 是否允许被会话加载；直接编辑 `~/.dsh/mcp.json` 后，描述目录会在 3 秒内刷新，且只安全重连已经加载过该 Server 的会话。
 - **打开配置文件**（macOS / Linux 系统编辑器）。
 
 **能力清单 prompt 段**
-每个会话的系统提示词都会追加 `capability:mcp` 段，列出已配置 server 及其启用状态，
-让模型知道有哪些工具可用。
+每个会话的系统提示词都会追加紧凑的 `capability:mcp` 段，只列出已配置 Server 的名称、已有
+`description` 与是否允许加载。模型需要某项能力时才加载完整工具 Schema。
 
 ## 安装
 
@@ -43,7 +42,7 @@
 ```json
 {
   "dependencies": {
-    "@kiligzzz/dsh-skill-mcp-manager": "^0.1.0"
+    "@kiligzzz/dsh-skill-mcp-manager": "^0.3.0"
   },
   "dsh": {
     "profile": {

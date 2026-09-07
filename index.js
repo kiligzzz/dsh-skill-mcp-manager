@@ -225,10 +225,25 @@ export function apply(ctx) {
     fs.writeFileSync(mcpConfigPath, JSON.stringify(map, null, 2))
   }
 
-  // ── MCP 挂载 ──
-  const fibers = new Map()
-  const status = new Map()
+  // ── MCP：会话级渐进加载 ──
+  // 配置仍是持久化的，但 MCP client 只挂到调用工具的 Agent scope。
+  const agentStates = new WeakMap()
+  const activeAgents = new Set()
   let mcpPlugin = null
+
+  function stateFor(agent) {
+    if (!agent || !agent.ctx || typeof agent.ctx.plugin !== 'function') {
+      throw new Error('MCP 会话工具需要 Agent-backed session')
+    }
+    let state = agentStates.get(agent)
+    if (!state) {
+      state = { records: new Map(), operations: new Set(), status: new Map(), disposed: false, disposePromise: null }
+      agentStates.set(agent, state)
+      activeAgents.add(agent)
+    }
+    if (state.disposed) throw new Error('Agent 已结束，不能加载 MCP')
+    return state
+  }
 
   async function getMcpPlugin() {
     if (mcpPlugin) return mcpPlugin
@@ -248,7 +263,7 @@ export function apply(ctx) {
     const base = {
       serverName: s.name,
       toolCallTimeoutMs: 60000,
-      failOnStartupError: false,
+      failOnStartupError: true,
       reconnect: { enabled: true, initialDelayMs: 500, maxDelayMs: 30000, maxAttempts: 10 },
     }
     if (s.transport === 'stdio') {
@@ -260,69 +275,271 @@ export function apply(ctx) {
     return Object.assign({}, base, { transport: 'streamable-http', url: s.url || '', headers: s.headers || {} })
   }
 
-  // 实时统计某 server 已注册的工具（去掉 mcp__<name>__ 前缀，带描述）
-  function listMcpTools(name) {
+  // 实时统计某 Agent 可见的 server 工具（去掉 mcp__<name>__ 前缀）
+  function listMcpTools(name, agent) {
     try {
       const prefix = 'mcp__' + name + '__'
       return ctx.tools
-        .schemas()
+        .schemas(agent)
         .filter((t) => typeof t.name === 'string' && t.name.startsWith(prefix))
         .map((t) => ({ name: t.name.slice(prefix.length), description: t.description || '' }))
         .sort((a, b) => a.name.localeCompare(b.name))
     } catch (e) { return [] }
   }
 
-  function unmountServer(name) {
-    const fiber = fibers.get(name)
-    if (fiber) {
-      try { fiber.dispose() } catch (e) { /* ignore */ }
-      fibers.delete(name)
+  function recordFor(state, name) {
+    let record = state.records.get(name)
+    if (!record) {
+      record = { generation: 0, fiber: null, operation: Promise.resolve(), loadPromise: null, queued: 0, wanted: false }
+      state.records.set(name, record)
     }
-    status.delete(name)
+    return record
   }
 
-  async function mountServer(s) {
-    unmountServer(s.name)
+  function queueServer(agent, name, operation) {
+    const state = agentStates.get(agent)
+    if (!state) return Promise.resolve({ name, state: 'unloaded', tools: [] })
+    const record = recordFor(state, name)
+    record.queued += 1
+    const task = record.operation.catch(() => {}).then(async () => {
+      try { return await operation(record) } finally { record.queued -= 1 }
+    })
+    record.operation = task
+    state.operations.add(task)
+    task.then(
+      () => state.operations.delete(task),
+      () => state.operations.delete(task)
+    )
+    return task
+  }
+
+  async function disposeFiber(fiber) {
+    if (!fiber || typeof fiber.dispose !== 'function') return
+    try { await fiber.dispose() } catch (e) { /* teardown is best effort */ }
+  }
+
+  function unmountServer(agent, name, keepWanted = false) {
+    const state = agentStates.get(agent)
+    if (!state) return Promise.resolve({ name, state: 'unloaded', tools: [] })
+    const record = recordFor(state, name)
+    record.generation += 1
+    record.loadPromise = null
+    if (!keepWanted) record.wanted = false
+    return queueServer(agent, name, async (current) => {
+      const fiber = current.fiber
+      current.fiber = null
+      await disposeFiber(fiber)
+      state.status.delete(name)
+      return { name, state: 'unloaded', tools: [] }
+    })
+  }
+
+  async function mountServer(agent, server, mode = 'load') {
+    const state = stateFor(agent)
+    const s = server
+    if (!s || !s.name) throw new Error('MCP server 不存在')
+    const record = recordFor(state, s.name)
+    if (mode === 'load') record.wanted = true
+    else if (!record.wanted) return { name: s.name, state: 'unloaded', tools: [] }
     if (!s.enabled) {
-      status.set(s.name, { state: 'disabled', error: null })
-      return
+      await unmountServer(agent, s.name, true)
+      if (!state.disposed) state.status.set(s.name, { state: 'disabled', error: null })
+      return { name: s.name, state: 'disabled', tools: [] }
     }
-    status.set(s.name, { state: 'mounting', error: null })
-    try {
-      const plugin = await getMcpPlugin()
-      if (!plugin) throw new Error('无法加载 @deepseek-ai/dsh-mcp-client')
-      const fiber = ctx.plugin(plugin, clientConfig(s))
-      fibers.set(s.name, fiber)
-      try {
-        await fiber
-        status.set(s.name, { state: 'mounted', error: null })
-      } catch (err) {
-        status.set(s.name, { state: 'error', error: String((err && err.message) || err) })
+    if (record.loadPromise) return record.loadPromise
+    if (record.fiber || record.queued > 0) {
+      if (record.queued > 0) {
+        return record.operation.then(() => mountServer(agent, s, mode))
       }
-    } catch (err) {
-      status.set(s.name, { state: 'error', error: String((err && err.message) || err) })
+
+      return { name: s.name, state: state.status.get(s.name)?.state || 'mounted', tools: listMcpTools(s.name, agent) }
+    }
+
+    const generation = ++record.generation
+    const task = queueServer(agent, s.name, async (current) => {
+      let fiber = null
+      state.status.set(s.name, { state: 'mounting', error: null, generation })
+      try {
+        const plugin = await getMcpPlugin()
+        if (!plugin) throw new Error('无法加载 @deepseek-ai/dsh-mcp-client')
+        if (state.disposed || current.generation !== generation) return { name: s.name, state: 'disposed', tools: [] }
+        fiber = agent.ctx.plugin(plugin, clientConfig(s))
+        current.fiber = fiber
+        await fiber
+        if (state.disposed || current.generation !== generation) {
+          if (current.fiber === fiber) current.fiber = null
+          await disposeFiber(fiber)
+          return { name: s.name, state: 'disposed', tools: [] }
+        }
+        state.status.set(s.name, { state: 'mounted', error: null })
+        return { name: s.name, state: 'mounted', tools: listMcpTools(s.name, agent) }
+      } catch (err) {
+        if (fiber) {
+          if (current.fiber === fiber) current.fiber = null
+          await disposeFiber(fiber)
+        }
+        if (state.disposed || current.generation !== generation) return { name: s.name, state: 'disposed', tools: [] }
+        const error = String((err && err.message) || err)
+        state.status.set(s.name, { state: 'error', error })
+        return { name: s.name, state: 'error', error, tools: [] }
+      }
+    })
+    record.loadPromise = task
+    task.then(
+      () => { if (record.loadPromise === task) record.loadPromise = null },
+      () => { if (record.loadPromise === task) record.loadPromise = null }
+    )
+    return task
+  }
+
+  function clearAgent(agent) {
+    const state = agentStates.get(agent)
+    if (!state) return Promise.resolve()
+    if (state.disposePromise) return state.disposePromise
+    if (state.disposed) return Promise.resolve()
+    state.disposed = true
+    state.disposePromise = (async () => {
+      for (const record of state.records.values()) {
+        record.generation += 1
+        record.loadPromise = null
+      }
+      const disposals = [...state.records.values()].map(async (record) => {
+        const fiber = record.fiber
+        record.fiber = null
+        await disposeFiber(fiber)
+      })
+      await Promise.allSettled([...state.operations, ...disposals])
+      state.status.clear()
+      activeAgents.delete(agent)
+    })()
+    return state.disposePromise
+  }
+
+  async function sessionMcp(args, exec) {
+    const agent = exec.agent
+    const state = stateFor(agent)
+    const names = Array.isArray(args.servers) ? [...new Set(args.servers.map(String))] : []
+    const configured = new Map(readServers().map((s) => [s.name, s]))
+    if (args.action === 'status') {
+      const results = [...state.status.entries()].map(([name, item]) => ({
+        name, state: item.state, error: item.error || null, tools: listMcpTools(name, agent).length,
+      }))
+      return {
+        action: 'status',
+        results,
+        loaded: results.filter((item) => item.state === 'mounted').map((item) => item.name)
+      }
+    }
+    if (names.length === 0) throw new Error('servers 不能为空；可先调用 status 查看已加载 MCP')
+    if (args.action === 'load') {
+      const missing = names.filter((name) => !configured.has(name))
+      if (missing.length) throw new Error('MCP server 不存在: ' + missing.join(', '))
+    }
+    const results = []
+    for (const name of names) {
+      if (args.action === 'load') {
+        results.push(await mountServer(agent, configured.get(name)))
+      } else if (args.action === 'unload') {
+        await unmountServer(agent, name)
+        results.push({ name, state: 'unloaded', tools: [] })
+      }
+    }
+    return {
+      action: args.action,
+      results,
+      loaded: [...state.status.entries()].filter(([, item]) => item.state === 'mounted').map(([name]) => name)
     }
   }
 
-  async function syncAll() {
-    for (const s of readServers()) await mountServer(s)
+  // 会话级入口：MCP 只在模型明确需要时加载，默认不把远端工具放进工具目录。
+  const mcpSessionTool = {
+    name: 'mcp_session',
+    description: 'Manage MCP servers for the current session. The initial prompt exposes only each configured server name and description. When a task needs database, logs, Nacos, Redis, repositories, Wiki, Feishu, CI/CD, or PopFlow capabilities and the corresponding native tools are not visible, you MUST load the matching MCP server first. Use action=load, unload, or status; loading exposes all tools from that server in the next model step. This never changes the global ~/.dsh/mcp.json configuration.',
+    parameters: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['load', 'unload', 'status'] },
+        servers: {
+          type: 'array',
+          description: 'MCP server names from the capability directory. Omit for status.',
+          items: { type: 'string' }
+        }
+      },
+      required: ['action'],
+      additionalProperties: false
+    },
+    output: {
+      schema: {
+        type: 'object',
+        properties: {
+          action: { type: 'string' },
+          results: { type: 'array', items: { type: 'object', additionalProperties: true } },
+          loaded: { type: 'array', items: { type: 'string' } }
+        },
+        additionalProperties: false
+      },
+      render: (_args, value) => [{ type: 'text', text: JSON.stringify(value, null, 2) }]
+    },
+    async execute(args, exec) {
+      if (!args || !['load', 'unload', 'status'].includes(args.action)) throw new Error('action 必须是 load、unload 或 status')
+      if (args.servers !== undefined && (!Array.isArray(args.servers) || args.servers.some((item) => typeof item !== 'string'))) {
+        throw new Error('servers 必须是 MCP server 名称数组')
+      }
+      return sessionMcp(args, exec)
+    },
+    presentCall(args) {
+      return { card: 'generic', title: 'Manage session MCP', kind: 'read', rawInput: JSON.stringify(args) }
+    }
   }
+  ctx.tools.register(mcpSessionTool)
 
-  // ── mcp.json 变更轮询（编辑文件保存后自动重载）──
+  ctx.on('agent/disposed', ({ agent }) => clearAgent(agent))
+  ctx.on('session/disposed', (session) => Promise.allSettled(
+    [...activeAgents].filter((agent) => agent.session === session).map((agent) => clearAgent(agent))
+  ))
+
+  // ── mcp.json 变更轮询：刷新描述，并只重连已经被会话加载的 Server ──
   let lastVersion = null
-  function pollConfig() {
-    let v = 'absent'
-    try { v = fs.statSync(mcpConfigPath).mtimeMs + ':' + fs.statSync(mcpConfigPath).size } catch (e) { /* ignore */ }
-    if (lastVersion === null) { lastVersion = v; return }
-    if (v !== lastVersion) {
-      lastVersion = v
-      syncAll().catch(() => { /* ignore */ })
+  let configSync = Promise.resolve()
+  let shuttingDown = false
+  function runConfigSync(operation) {
+    const task = configSync.catch(() => {}).then(operation)
+    configSync = task.then(() => {}, () => {})
+    return task
+  }
+  function configVersion() {
+    try { return fs.statSync(mcpConfigPath).mtimeMs + ':' + fs.statSync(mcpConfigPath).size } catch (e) { return 'absent' }
+  }
+  async function reconcileActiveServers() {
+    const configured = new Map(readServers().map((server) => [server.name, server]))
+    for (const agent of [...activeAgents]) {
+      const state = agentStates.get(agent)
+      if (!state || state.disposed) continue
+      for (const [name, record] of [...state.records]) {
+        if (!record.wanted) continue
+        const server = configured.get(name)
+        if (!server) {
+          await unmountServer(agent, name)
+          continue
+        }
+        await unmountServer(agent, name, true)
+        if (!state.disposed) await mountServer(agent, server, 'reload')
+      }
     }
+  }
+  function pollConfig() {
+    if (shuttingDown) return
+    const version = configVersion()
+    if (lastVersion === null) { lastVersion = version; return }
+    if (version === lastVersion) return
+    lastVersion = version
+    refreshSection()
+    runConfigSync(() => reconcileActiveServers())
   }
   const pollTimer = setInterval(pollConfig, 3000)
   ctx.effect(() => () => clearInterval(pollTimer))
 
-  // ── 全局能力清单（每个会话可见）──
+  // ── MCP 描述目录（每个会话可见，原生工具按需加载）──
   let sectionDispose = null
   function refreshSection() {
     try {
@@ -331,13 +548,14 @@ export function apply(ctx) {
       if (!sys) return
       const servers = readServers()
       const lines = []
-      lines.push('Capability directory — MCP servers (managed by ~/.dsh/mcp.json):')
+      lines.push('Lazy MCP directory — server descriptions are always available; native MCP tools are loaded only for the current session when needed.')
       if (!servers.length) {
         lines.push('- none configured. Configure them in Settings → MCP.')
       } else {
         for (const s of servers) {
-          lines.push('- MCP ' + s.name + ': ' + (s.description || s.transport) + ' (tools mcp__' + s.name + '__*, ' + (s.enabled ? 'enabled' : 'disabled') + ')')
+          lines.push('- MCP ' + s.name + ': ' + (s.description || s.transport) + ' (' + (s.enabled ? 'available for session load' : 'disabled') + ')')
         }
+        lines.push('If a task needs one of these capabilities and its native tools are not visible, call mcp_session with action=load and the exact server name.')
       }
       sectionDispose = sys.section({ name: 'capability:mcp', order: 15, text: lines.join('\n') })
     } catch (e) { /* ignore */ }
@@ -360,48 +578,74 @@ export function apply(ctx) {
       return { ok: true }
     },
     async listServers() {
-      const servers = readServers().map((s) => {
-        const st = status.get(s.name) || { state: 'unknown', error: null }
-        const tools = listMcpTools(s.name)
-        return Object.assign({}, s, { tools, status: Object.assign({}, st, { tools: tools.length }) })
-      })
+      const servers = readServers().map((s) => Object.assign({}, s, {
+        tools: [],
+        status: { state: s.enabled ? 'available' : 'disabled', error: null, tools: 0, scope: 'session' }
+      }))
       return { servers }
     },
     async saveServer(server) {
-      const s = server || {}
-      if (!s.name || !NAME_RE.test(String(s.name))) throw new Error('server 名称需为 kebab-case')
-      const name = String(s.name)
-      const clean = {
-        name,
-        transport: s.transport === 'stdio' ? 'stdio' : 'streamable-http',
-        command: s.command || 'npx',
-        args: Array.isArray(s.args) ? s.args : [],
-        env: s.env || {},
-        cwd: s.cwd || '',
-        url: s.url || '',
-        headers: s.headers || {},
-        enabled: !!s.enabled,
-        description: s.description || s.purpose || '',
-      }
-      const list = readServers()
-      const i = list.findIndex((x) => x.name === name)
-      if (i >= 0) list[i] = clean; else list.push(clean)
-      writeServers(list)
-      await mountServer(clean)
-      refreshSection()
-      return { ok: true }
+      return runConfigSync(async () => {
+        const s = server || {}
+        if (!s.name || !NAME_RE.test(String(s.name))) throw new Error('server 名称需为 kebab-case')
+        const name = String(s.name)
+        const clean = {
+          name,
+          transport: s.transport === 'stdio' ? 'stdio' : 'streamable-http',
+          command: s.command || 'npx',
+          args: Array.isArray(s.args) ? s.args : [],
+          env: s.env || {},
+          cwd: s.cwd || '',
+          url: s.url || '',
+          headers: s.headers || {},
+          enabled: !!s.enabled,
+          description: s.description || s.purpose || '',
+        }
+        const list = readServers()
+        const i = list.findIndex((x) => x.name === name)
+        if (i >= 0) list[i] = clean; else list.push(clean)
+        writeServers(list)
+        lastVersion = configVersion()
+        for (const agent of activeAgents) {
+          const state = agentStates.get(agent)
+          const record = state?.records.get(name)
+          if (!record?.wanted) continue
+          await unmountServer(agent, name, true)
+          if (!state.disposed) await mountServer(agent, clean, 'reload')
+        }
+        refreshSection()
+        return { ok: true }
+      })
     },
     async removeServer(name) {
-      const list = readServers().filter((s) => s.name !== name)
-      writeServers(list)
-      unmountServer(String(name))
-      refreshSection()
-      return { ok: true }
+      return runConfigSync(async () => {
+        const serverName = String(name)
+        const list = readServers().filter((s) => s.name !== serverName)
+        writeServers(list)
+        lastVersion = configVersion()
+        for (const agent of activeAgents) {
+          const state = agentStates.get(agent)
+          if (state?.records.has(serverName)) await unmountServer(agent, serverName)
+        }
+        refreshSection()
+        return { ok: true }
+      })
     },
     async refreshServer(name) {
-      const s = readServers().find((x) => x.name === name)
-      if (s) await mountServer(s)
-      return { ok: true }
+      return runConfigSync(async () => {
+        const serverName = String(name)
+        const server = readServers().find((item) => item.name === serverName)
+        for (const agent of activeAgents) {
+          const state = agentStates.get(agent)
+          const record = state?.records.get(serverName)
+          if (record?.wanted) {
+            await unmountServer(agent, serverName, true)
+            if (server && !state.disposed) await mountServer(agent, server, 'reload')
+          }
+        }
+        refreshSection()
+        return { ok: true }
+      })
     },
     async openConfig() {
       writeServers(readServers())
@@ -475,14 +719,14 @@ export function apply(ctx) {
   ctx.effect(() => () => { restStopped = true; clearInterval(restTimer) })
   tryRegisterRest()
 
-  // 启动时同步一次
-  syncAll()
-    .then(() => refreshSection())
-    .catch((e) => console.error('@kiligzzz/dsh-skill-mcp-manager sync:', e))
+  // 启动时只发布 MCP 描述目录，不建立任何远端连接。
+  refreshSection()
 
-  // 卸载清理
-  ctx.effect(() => () => {
-    for (const name of Array.from(fibers.keys())) unmountServer(name)
+  // 卸载清理：主动回收所有仍存活 Agent 的会话级 Fiber。
+  ctx.effect(() => async () => {
+    shuttingDown = true
+    await configSync.catch(() => {})
+    await Promise.allSettled([...activeAgents].map((agent) => clearAgent(agent)))
     if (sectionDispose) { try { sectionDispose() } catch (e) { /* ignore */ } }
   })
 }

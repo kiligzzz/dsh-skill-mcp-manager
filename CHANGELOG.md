@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.3.0] - 2026-09-07
+
+### Changed
+
+- MCP 从 Host 全局即时挂载改为 Agent-scoped 渐进加载：初始请求仅携带 Server 名称和 `mcp.json` 中已有的 `description`。
+- 新增常驻 `mcp_session` 工具，支持 `load` / `unload` / `status`；加载后，该 Server 的完整工具 Schema 从下一模型步骤起仅对当前会话可见。
+- Agent 销毁时主动释放会话级 MCP Fiber，关闭连接并注销工具；设置页的 `enabled` 语义改为“允许会话按需加载”。
+- `mcp.json` 轮询刷新能力描述目录，并只安全重连已经加载过对应 Server 的会话，不再启动或重挂全局 MCP 连接。
+
 ## [0.2.0] - 2026-09-02
 
 ### Changed

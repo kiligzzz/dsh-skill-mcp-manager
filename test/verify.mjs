@@ -51,7 +51,13 @@ check('client apply uses ctx.slots', client.includes('const slots = ctx.slots;')
 check('client has no ctx.get("slots") call', !/const slots = ctx\.get\("slots"\)/.test(client))
 check('package inject uses dsh-client-store', !JSON.stringify(pkg.dsh.client.inject).includes('dsh-client-runtime'))
 
-// 4. REST surface used by the client exists in the host
+// 4. MCP is session-scoped and progressively loaded
+check('host registers mcp_session', host.includes("name: 'mcp_session'"))
+check('host mounts MCP through Agent scope', host.includes('agent.ctx.plugin(plugin, clientConfig(s))'))
+check('host does not globally sync MCP at startup', !host.includes('syncAll()'))
+check('host cleans Agent MCP state', host.includes("ctx.on('agent/disposed'"))
+
+// 5. REST surface used by the client exists in the host
 for (const ep of ['/capabilities-api', '/capabilities-api/skill/toggle', '/capabilities-api/skill/open',
   '/capabilities-api/skill/delete', '/capabilities-api/skill/import', '/capabilities-api/skill/sync',
   '/capabilities-api/mcp/save', '/capabilities-api/mcp/remove', '/capabilities-api/mcp/refresh',

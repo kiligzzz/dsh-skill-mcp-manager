@@ -8,7 +8,7 @@ DSH source changes required.
 
 | Skill page | MCP page |
 | --- | --- |
-| Toggle / delete / import / folder-sync your skills (`~/.dsh/skills`). | Add / edit / toggle / refresh / remove MCP servers (`~/.dsh/mcp.json`), with live mount state and per-server tool lists. |
+| Toggle / delete / import / folder-sync your skills (`~/.dsh/skills`). | Add / edit / toggle / refresh / remove MCP servers (`~/.dsh/mcp.json`) and progressively load tools per session from server descriptions. |
 
 Built on the official DSH dual-face plugin mechanism (host + browser half), loaded as a
 profile bundle row — survives DSH upgrades and needs no dynamic-plugin activation.
@@ -28,16 +28,19 @@ profile bundle row — survives DSH upgrades and needs no dynamic-plugin activat
 **MCP management** (`~/.dsh/mcp.json`, map format)
 - Add / edit / remove servers with both transports: `stdio` (command, args, env, cwd)
   and `streamable-http` (url, headers).
-- **Live mount/unmount** through `@deepseek-ai/dsh-mcp-client` (resolved from the host
-  runtime; no bundled dependency), with reconnect and a 60s tool-call timeout.
-- Per-server **live status** (mounted / mounting / error / disabled), per-server
-  **tool list** (prefixed `mcp__<name>__`) and error log copy.
-- Editing `~/.dsh/mcp.json` on disk is picked up automatically (3s poll) and remounts.
+- **Progressive per-session loading**: startup creates no MCP connections and exposes no
+  native MCP tool schemas. Once the model matches a server description it calls
+  `mcp_session(load)`, which mounts all tools from that server in the current Agent scope.
+- `mcp_session` supports `load`, `unload`, and `status`; sessions are isolated and Agent
+  disposal closes connections and unregisters tools automatically.
+- `enabled` means the server may be loaded by a session. Editing `~/.dsh/mcp.json` is picked
+  up within 3 seconds, refreshes the compact directory, and safely reconnects only sessions
+  that had already loaded the changed server.
 - **Open config** in the system editor (macOS / Linux).
 
 **Capability directory prompt section**
-Every session's system prompt gets a `capability:mcp` section listing the configured
-servers and their enabled/disabled state, so the model knows what tools are available.
+Every session gets a compact `capability:mcp` section containing only configured server
+names, existing descriptions, and availability. Full tool schemas appear only after load.
 
 ## Install
 
@@ -47,7 +50,7 @@ Requires a DSH profile that loads profile bundle patches. In your profile's
 ```json
 {
   "dependencies": {
-    "@kiligzzz/dsh-skill-mcp-manager": "^0.1.0"
+    "@kiligzzz/dsh-skill-mcp-manager": "^0.3.0"
   },
   "dsh": {
     "profile": {

@@ -1,7 +1,7 @@
 {
   "name": "@kiligzzz/dsh-skill-mcp-manager",
-  "version": "0.2.0",
-  "description": "DSH Skill MCP Manager for DeepSeek Harness Desktop: manage MCP servers (~/.dsh/mcp.json, live mount/unmount) and Skills (~/.dsh/skills, toggle/delete/import/folder-sync) from a Settings-page UI, plus a per-session capability-directory prompt section. Dual-face dsh plugin (host + browser half), no DSH source changes.",
+  "version": "0.3.0",
+  "description": "DSH Skill MCP Manager for DeepSeek Harness Desktop: manage MCP servers and Skills from Settings, publish compact capability descriptions, and progressively load each MCP server's tools only into the requesting session. Dual-face dsh plugin, no DSH source changes.",
   "keywords": [
     "dsh",
     "dsh-plugin",
