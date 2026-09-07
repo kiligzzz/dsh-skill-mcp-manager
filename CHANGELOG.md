@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.3.1] - 2026-09-07
+
+- 设置页恢复工具数量、名称和描述，使用独立缓存 `~/.dsh/mcp-tools-cache.json`。
+- 行内刷新仅采集工具清单；临时隔离工具注册器复用 MCP client，采集后关闭连接，不注入任何会话工具。
+- 保存启用的 Server 后更新目录；刷新失败保留旧目录并显示错误，显示最后成功更新时间。
+
 ## [0.3.0] - 2026-09-07
 
 ### Changed

@@ -230,6 +230,52 @@ export function apply(ctx) {
   const agentStates = new WeakMap()
   const activeAgents = new Set()
   let mcpPlugin = null
+  const catalogPath = path.join(dshHome, 'mcp-tools-cache.json')
+  let catalog = {}
+  try {
+    const saved = JSON.parse(fs.readFileSync(catalogPath, 'utf8'))
+    if (saved && typeof saved === 'object' && !Array.isArray(saved)) catalog = saved
+  } catch {}
+
+  async function refreshCatalog(server) {
+    const plugin = await getMcpPlugin()
+    const tools = new Map()
+    let probe
+    try {
+      probe = ctx.isolate('tools').plugin({
+        name: 'mcp-catalog-probe',
+        async apply(probeCtx) {
+          // Capture metadata without publishing callable tools to any Agent.
+          probeCtx.provide('tools', {
+            register(definition) {
+              const prefix = 'mcp__' + server.name + '__'
+              tools.set(definition.name, {
+                name: definition.name.slice(prefix.length),
+                description: definition.description || '',
+              })
+              return () => tools.delete(definition.name)
+            },
+          })
+          await probeCtx.plugin(plugin, {
+            ...clientConfig(server), reconnect: { enabled: false },
+          })
+        },
+      })
+      await probe
+      catalog[server.name] = {
+        updatedAt: new Date().toISOString(),
+        tools: [...tools.values()].sort((a, b) => a.name.localeCompare(b.name)),
+        error: null,
+      }
+    } catch {
+      catalog[server.name] = { ...catalog[server.name], error: '工具清单刷新失败，请检查连接配置后重试。' }
+    } finally {
+      if (probe) await probe.dispose()
+    }
+    fs.mkdirSync(dshHome, { recursive: true })
+    fs.writeFileSync(catalogPath, JSON.stringify(catalog, null, 2), { mode: 0o600 })
+    return { ok: true }
+  }
 
   function stateFor(agent) {
     if (!agent || !agent.ctx || typeof agent.ctx.plugin !== 'function') {
@@ -579,7 +625,8 @@ export function apply(ctx) {
     },
     async listServers() {
       const servers = readServers().map((s) => Object.assign({}, s, {
-        tools: [],
+        tools: catalog[s.name]?.tools || [],
+        catalog: { updatedAt: catalog[s.name]?.updatedAt || null, error: catalog[s.name]?.error || null },
         status: { state: s.enabled ? 'available' : 'disabled', error: null, tools: 0, scope: 'session' }
       }))
       return { servers }
@@ -613,6 +660,7 @@ export function apply(ctx) {
           await unmountServer(agent, name, true)
           if (!state.disposed) await mountServer(agent, clean, 'reload')
         }
+        if (clean.enabled) await refreshCatalog(clean)
         refreshSection()
         return { ok: true }
       })
@@ -622,6 +670,8 @@ export function apply(ctx) {
         const serverName = String(name)
         const list = readServers().filter((s) => s.name !== serverName)
         writeServers(list)
+        delete catalog[serverName]
+        fs.writeFileSync(catalogPath, JSON.stringify(catalog, null, 2), { mode: 0o600 })
         lastVersion = configVersion()
         for (const agent of activeAgents) {
           const state = agentStates.get(agent)
@@ -691,6 +741,14 @@ export function apply(ctx) {
           case '/capabilities-api/mcp/save': out = await service.saveServer(body.server); break
           case '/capabilities-api/mcp/remove': out = await service.removeServer(body.name); break
           case '/capabilities-api/mcp/refresh': out = await service.refreshServer(body.name); break
+          case '/capabilities-api/mcp/catalog': {
+            out = await runConfigSync(async () => {
+              const server = readServers().find((item) => item.name === body.name)
+              if (!server) throw new Error('MCP server 不存在')
+              return refreshCatalog(server)
+            })
+            break
+          }
           case '/capabilities-api/mcp/open-config': out = await service.openConfig(); break
           default: return send(res, 404, { ok: false, error: 'not found: ' + pathname })
         }
